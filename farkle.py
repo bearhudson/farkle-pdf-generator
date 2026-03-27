@@ -5,13 +5,10 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 
-# Constants for layout
 PAGE_WIDTH = 8.5 * inch
-PAGE_HEIGHT = 11 * inch
 MARGIN = 0.5 * inch
 AVAILABLE_WIDTH = PAGE_WIDTH - (2 * MARGIN)
-# Space reserved for the scoring block and margins
-AVAILABLE_HEIGHT = 7.5 * inch 
+AVAILABLE_HEIGHT = 7.3 * inch 
 
 class DiceGraphic(Flowable):
     def __init__(self, value, size=10): 
@@ -23,13 +20,12 @@ class DiceGraphic(Flowable):
 
     def draw(self):
         s = self.size
-        r = s * 0.25 # Rounded corners
+        r = s * 0.25 
         dot_r = s * 0.08
         self.canv.setLineWidth(0.5)
         self.canv.setStrokeColor(colors.black)
         self.canv.setFillColor(colors.white)
         self.canv.roundRect(0, 0, s, s, r, stroke=1, fill=1)
-        
         l, c, r_pos = s * 0.25, s * 0.5, s * 0.75
         dots = {
             1: [(c, c)], 2: [(l, l), (r_pos, r_pos)], 3: [(l, l), (c, c), (r_pos, r_pos)],
@@ -40,6 +36,21 @@ class DiceGraphic(Flowable):
         self.canv.setFillColor(colors.black)
         for dx, dy in dots[self.value]:
             self.canv.circle(dx, dy, dot_r, fill=1)
+
+class ScoreRow(Flowable):
+    def __init__(self, die_val, multiplier, size=10):
+        Flowable.__init__(self)
+        self.die_val = die_val
+        self.mult = multiplier
+        self.size = size
+        self.width = size + 22
+        self.height = size
+
+    def draw(self):
+        die = DiceGraphic(self.die_val, size=self.size)
+        die.drawOn(self.canv, 0, 0)
+        self.canv.setFont("Helvetica-Bold", self.size)
+        self.canv.drawString(self.size + 4, 1, f"x {self.mult}")
 
 class DiceCombination(Flowable):
     def __init__(self, die_values, size=10, padding=2):
@@ -61,57 +72,61 @@ def generate_farkle_sheet(rounds, players, filename):
                              leftMargin=MARGIN, rightMargin=MARGIN, bottomMargin=MARGIN)
     elements = []
     styles = getSampleStyleSheet()
-    scoring_style = ParagraphStyle('Scoring', parent=styles['Normal'], fontSize=9, leading=11)
+    scoring_style = ParagraphStyle('Scoring', parent=styles['Normal'], fontSize=8.5, leading=10, alignment=0)
+    center_style = ParagraphStyle('Center', parent=styles['Normal'], fontSize=8.5, leading=10, alignment=1)
 
-    # --- 1. SCORING REFERENCE BLOCK ---
-    trips_rows = [
-        [DiceCombination([1, 1, 1]), Paragraph("1,000 pts", scoring_style)],
-        [DiceCombination([2, 2, 2]), Paragraph("200 pts", scoring_style)],
-        [DiceCombination([3, 3, 3]), Paragraph("300 pts", scoring_style)],
-        [DiceCombination([4, 4, 4]), Paragraph("400 pts", scoring_style)],
-        [DiceCombination([5, 5, 5]), Paragraph("500 pts", scoring_style)],
-        [DiceCombination([6, 6, 6]), Paragraph("600 pts", scoring_style)]
+    # --- 1. CENTERED THREE-COLUMN SCORING REFERENCE ---
+    # Column 1: Triplets
+    col1_data = [[ScoreRow(1, 3), Paragraph("1,000 pts", scoring_style)]]
+    for i in range(2, 7):
+        col1_data.append([ScoreRow(i, 3), Paragraph(f"{i*100} pts", scoring_style)])
+    
+    # Column 2: Singles and "Kinds"
+    col2_data = [
+        [ScoreRow(1, 1), Paragraph("100 pts", scoring_style)],
+        [ScoreRow(5, 1), Paragraph("50 pts", scoring_style)],
+        [Paragraph("<b>4 Kind</b>", scoring_style), Paragraph("1,000", scoring_style)],
+        [Paragraph("<b>5 Kind</b>", scoring_style), Paragraph("2,000", scoring_style)],
+        [Paragraph("<b>6 Kind</b>", scoring_style), Paragraph("3,000", scoring_style)],
+        [Paragraph("<b>4 Kind + Pair</b>", scoring_style), Paragraph("1,500", scoring_style)],
     ]
-    specials_rows = [
-        [DiceCombination([1]), Paragraph("100 pts", scoring_style)],
-        [DiceCombination([5]), Paragraph("50 pts", scoring_style)],
-        [DiceCombination([1,2,3,4,5,6]), Paragraph("1,500 pts (Straight)", scoring_style)],
-        [DiceCombination([1,1,2,2,3,3]), Paragraph("1,500 pts (3 Pairs)", scoring_style)],
-        [DiceCombination([4,4,4,6,6,6]), Paragraph("2,500 pts (2 Triplets)", scoring_style)],
-        [Paragraph('<i>500 to start / 300 min bank</i>', scoring_style), '']
+
+    # Column 3: Multi-dice Specials and Notes
+    col3_data = [
+        [DiceCombination([1,2,3,4,5,6]), Paragraph("1,500 (Straight)", scoring_style)],
+        [DiceCombination([1,1,2,2,3,3]), Paragraph("1,500 (3 Pairs)", scoring_style)],
+        [Spacer(1, 5), Spacer(1, 5)],
+        [Paragraph("<i>500 to start</i>", center_style), ''],
+        [Paragraph("<i>300 min bank</i>", center_style), ''],
     ]
 
-    trips_table = Table(trips_rows, colWidths=[0.8*inch, 0.8*inch])
-    specials_table = Table(specials_rows, colWidths=[1.1*inch, 1.8*inch])
-    inner_style = TableStyle([('VALIGN', (0,0), (-1,-1), 'MIDDLE'), ('BOTTOMPADDING', (0,0), (-1,-1), 3)])
-    trips_table.setStyle(inner_style)
-    specials_table.setStyle(inner_style)
-    specials_table.setStyle(TableStyle([('SPAN', (0,5), (1,5))]))
+    t1 = Table(col1_data, colWidths=[0.6*inch, 0.8*inch])
+    t2 = Table(col2_data, colWidths=[0.9*inch, 0.6*inch])
+    t3 = Table(col3_data, colWidths=[1.1*inch, 1.2*inch])
+    
+    inner_style = TableStyle([('VALIGN', (0,0), (-1,-1), 'MIDDLE'), ('LEFTPADDING', (0,0), (-1,-1), 0)])
+    for t in [t1, t2, t3]: t.setStyle(inner_style)
+    t3.setStyle(TableStyle([('SPAN', (0,3), (1,3)), ('SPAN', (0,4), (1,4))]))
 
-    main_ref_table = Table([[trips_table, specials_table]], colWidths=[2.2*inch, 4.8*inch])
+    # Main outer table to center everything across the width
+    main_ref_table = Table([[t1, t2, t3]], colWidths=[AVAILABLE_WIDTH/3]*3)
     main_ref_table.setStyle(TableStyle([
         ('BOX', (0,0), (-1,-1), 1.2, colors.black),
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
         ('VALIGN', (0,0), (-1,-1), 'TOP'),
-        ('LEFTPADDING', (0,0), (-1,-1), 12), ('TOPPADDING', (0,0), (-1,-1), 8),
+        ('TOPPADDING', (0,0), (-1,-1), 8),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 8),
     ]))
+    
     elements.append(main_ref_table)
     elements.append(Spacer(1, 0.15*inch))
 
     # --- 2. DYNAMIC SCORE TABLE ---
     header = ['Round'] + [f'P{i+1}' if players > 6 else f'Player {i+1}' for i in range(players)]
-    score_data = [header]
-    for i in range(1, rounds + 1):
-        score_data.append([str(i)] + [''] * players)
-    score_data.append(['TOTAL'] + [''] * players)
+    score_data = [header] + [[str(i)] + [''] * players for i in range(1, rounds + 1)] + [['TOTAL'] + [''] * players]
 
-    # Width Logic
-    player_col_width = (AVAILABLE_WIDTH - 0.6 * inch) / players
-    col_widths = [0.6 * inch] + [player_col_width] * players
-    
-    # Height Logic (ensures single page)
-    row_height = AVAILABLE_HEIGHT / (rounds + 2)
-    row_height = min(row_height, 32) # Max height for comfort
-    row_height = max(row_height, 18) # Min height for utility
+    col_widths = [0.6 * inch] + [(AVAILABLE_WIDTH - 0.6 * inch) / players] * players
+    row_height = min(AVAILABLE_HEIGHT / (rounds + 2), 32)
 
     score_table = Table(score_data, colWidths=col_widths, rowHeights=row_height)
     score_table.setStyle(TableStyle([
@@ -128,9 +143,8 @@ def generate_farkle_sheet(rounds, players, filename):
     
     elements.append(score_table)
     doc.build(elements)
-    print(f"Generated: {filename} ({players} players, {rounds} rounds)")
+    print(f"Generated centered sheet: {filename}")
 
-# Range checker for Argparse
 def check_range(value, name, min_val, max_val):
     ivalue = int(value)
     if ivalue < min_val or ivalue > max_val:
@@ -138,14 +152,9 @@ def check_range(value, name, min_val, max_val):
     return ivalue
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Generate a Farkle Score Sheet PDF.")
-    
-    parser.add_argument("-r", "--rounds", type=lambda x: check_range(x, "Rounds", 1, 20), 
-                        default=20, help="Number of rounds (1-20)")
-    parser.add_argument("-p", "--players", type=lambda x: check_range(x, "Players", 1, 8), 
-                        default=5, help="Number of players (1-8)")
-    parser.add_argument("-o", "--output", type=str, 
-                        default="Farkle_Score_Sheet.pdf", help="Filename")
-    
+    parser = argparse.ArgumentParser(description="Generate a centered Farkle Score Sheet.")
+    parser.add_argument("-r", "--rounds", type=lambda x: check_range(x, "Rounds", 1, 20), default=20)
+    parser.add_argument("-p", "--players", type=lambda x: check_range(x, "Players", 1, 8), default=5)
+    parser.add_argument("-o", "--output", type=str, default="Farkle_Centered_Sheet.pdf")
     args = parser.parse_args()
     generate_farkle_sheet(args.rounds, args.players, args.output)
