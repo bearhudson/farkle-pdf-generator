@@ -18,3 +18,5 @@ usage: farkle.py [-h] [-r ROUNDS] [-p PLAYERS] [-o OUTPUT]
 farkle.py: error: argument -p/--players: Players must be between 1 and 8.
 farkle.py: error: argument -r/--rounds: Rounds must be between 1 and 20.
 ```
+
+If there's interest I can program this into a proper system package so you can install it from pip directly with all dependencies.
